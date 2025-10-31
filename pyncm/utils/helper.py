@@ -233,7 +233,7 @@ class TrackHelper:
     def AlbumCover(self):
         """专辑封面"""
         al = self.data["al"] if "al" in self.data else self.data["album"]
-        if al["id"]:
+        if al["id"] is not None and al["picUrl"]:
             return al["picUrl"]
         else:
             return "https://music.163.com/api/img/blur/" + self.data["pc"]["cid"]
