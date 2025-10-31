@@ -241,7 +241,7 @@ class TaskPoolExecutorThread(Thread):
                     )
                     # Downloading & Parsing lyrics
                     lrc = LrcParser()
-                    dLyrics = track.GetTrackLyricsNew(task.lyrics.id)
+                    dLyrics = track.GetTrackLyricsV1(task.lyrics.id)
                     for k in set(dLyrics.keys()) & (
                         {"lrc", "tlyric", "romalrc"} - task.lyrics.lrc_blacklist
                     ):  # Filtering LRCs
