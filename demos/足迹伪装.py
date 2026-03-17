@@ -14,7 +14,7 @@ __desc__ = """user.SetWeblog API 功能演示
 
     调用例子 : /scrobble?id=518066366&sourceid=36780169&time=291
 """
-from __init__ import login
+from __init__ import login, session
 
 assert login(), "登录失败"
 from pyncm.apis.user import SetWeblog
@@ -37,6 +37,7 @@ pprint(
                     "source": "list",
                 },
             }
-        ]
+        ],
+        session=session
     )
 )

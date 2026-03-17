@@ -5,7 +5,7 @@ import time
 import qrcode
 
 
-def login():
+def login(session):
     from pyncm.apis.login import (
         GetCurrentLoginStatus,
         WriteLoginInfo,
@@ -13,26 +13,26 @@ def login():
         LoginQrcodeCheck,
         GetLoginQRCodeUrl
     )
-    from pyncm import GetCurrentSession, DumpSessionAsString
+    from pyncm import DumpSessionAsString
 
-    uuid = LoginQrcodeUnikey()["unikey"]  # 获取 UUID
+    uuid = LoginQrcodeUnikey(session=session)["unikey"]  # 获取 UUID
     print("UUID", uuid)
 
-    url = GetLoginQRCodeUrl(uuid) # 使用此函数来正确生成二维码链接
+    url = GetLoginQRCodeUrl(uuid, session=session) # 使用此函数来正确生成二维码链接
     img = qrcode.make(url)
     input("按 Enter 以显示二维码,扫描完毕请关闭")
     img.show()
     while True:
         for dot in ["...", ".. ", ".  "]:
-            rsp = LoginQrcodeCheck(uuid)  # 检测扫描状态
+            rsp = LoginQrcodeCheck(uuid, session=session)  # 检测扫描状态
             print(f"{rsp['code']} -- {rsp['message']}", dot, end="\r")
             if rsp["code"] == 803:
                 # 登录成功
                 print(f"{rsp['code']} -- {rsp['message']}", "...")
-                WriteLoginInfo(
-                    GetCurrentLoginStatus(),
-                )
-                print("[!] 登录态 Session:", DumpSessionAsString(GetCurrentSession()))
+                print("[!] 登录态 Session:", DumpSessionAsString(session))
+                print(GetCurrentLoginStatus(session=session))
+                WriteLoginInfo(GetCurrentLoginStatus(session=session),session)
+                print("[!] 登录态 Session:", DumpSessionAsString(session))
                 print(
                     '[-] 此后可通过 SetCurrentSession(LoadSessionFromString("PYNCMe...")) 恢复当前登录态'
                 )
@@ -50,4 +50,5 @@ def login():
 
 if __name__ == "__main__":
     print("二维码登录测试")
-    assert login(), "登陆失败"
+    from pyncm import Session
+    assert login(Session()), "登陆失败"

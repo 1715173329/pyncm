@@ -8,6 +8,13 @@ import datetime, logging
 truncate_length = 64
 logger = logging.getLogger("pyncm.helper")
 
+session = None
+
+
+def setSession(s):
+    global session
+    session = s
+
 
 def SubstituteWithFullwidth(string, sub=set('\x00\\/:<>|?*".')):
     return "".join([c if not c in sub else chr(ord(c) + 0xFEE0) for c in string])
@@ -55,7 +62,7 @@ class IDCahceHelper:
 
     def refresh(self):
         with self._lock:
-            self.data = self._factory_func(self._item_id)
+            self.data = self._factory_func(self._item_id, session=session)
 
 
 class AlbumHelper(IDCahceHelper):

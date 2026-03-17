@@ -3,31 +3,30 @@
 
 PyNCM 包装的网易云音乐 API 的使用非常简单::
 
-    >>> from pyncm import apis
+    >>> import pyncm
+    # 创建Session
+    >>> session = pyncm_async.Session()
     # 登录
-    >>> apis.LoginViaCellphone(phone="[..]", password="[..]", ctcode=86, remeberLogin=True)
+    >>> pyncm.apis.LoginViaCellphone(phone="[..]", password="[..]", ctcode=86, remeberLogin=True, session=session)
     # 获取歌曲信息
-    >>> apis.track.GetTrackAudio(29732235)
+    >>> pyncm.apis.track.GetTrackAudio(29732235, session=session)
     {'data': [{'id': 29732235, 'url': 'http://m701.music...
     # 获取歌曲详情
-    >>> apis.track.GetTrackDetail(29732235)
+    >>> pyncm.apis.track.GetTrackDetail(29732235, session=session)
     {'songs': [{'name': 'Supernova', 'id': 2...
     # 获取歌曲评论
-    >>> apis.track.GetTrackComments(29732235)
+    >>> pyncm.apis.track.GetTrackComments(29732235, session=session)
     {'isMusician': False, 'userId': -1, 'topComments': [], 'moreHot': True, 'hotComments': [{'user': {'locationInfo': None, 'liveIn ...
 
-PyNCM 的所有 API 请求都将经过单例的 `pyncm.Session` 发出，管理此单例可以使用::
+PyNCM 的所有 API 请求都将经过传入的 `pyncm.Session` 发出，调用时必须显式传入 `session` 参数:
 
-    >>> session = pyncm.GetCurrentSession()
-    >>> pyncm.SetCurrentSession(session)
-    >>> pyncm.SetNewSession()
+    >>> session = Session()
+    >>> pyncm.apis.track.GetTrackComments(29732235, session=session)
 
-PyNCM 同时提供了相应的 Session 序列化函数，用于其储存及管理::
+PyNCM 提供了相应的 Session 序列化函数，用于其储存及管理:
 
-    >>> save = pyncm.DumpSessionAsString()
-    >>> pyncm.SetCurrentSession(
-            pyncm.LoadSessionFromString(save)
-        )
+    >>> session_str = pyncm.DumpSessionAsString(session)
+    >>> new_session = pyncm.LoadSessionFromString(session_str)
 
 # 注意事项
     - (PR#11) 海外用户可能经历 460 "Cheating" 问题，可通过添加以下 Header 解决: `X-Real-IP = 118.88.88.88`
@@ -37,9 +36,8 @@ __VERSION_MAJOR__ = 1
 __VERSION_MINOR__ = 8
 __VERSION_PATCH__ = 1
 
-__version__ = "%s.%s.%s" % (__VERSION_MAJOR__, __VERSION_MINOR__, __VERSION_PATCH__)
+__version__ = f"{__VERSION_MAJOR__}.{__VERSION_MINOR__}.{__VERSION_PATCH__}"
 
-from threading import current_thread
 from typing import Text, Union
 from time import time
 
@@ -56,11 +54,11 @@ if "PYNCM_DEBUG" in os.environ:
         level=debug_level, format="[%(levelname).4s] %(name)s %(message)s"
     )
 
+"""默认 deviceID"""
 DEVICE_ID_DEFAULT = "pyncm!"
 # This sometimes fails with some strings, for no particular reason. Though `pyncm!` seem to work everytime..?
 # Though with this, all pyncm users would then be sharing the same device Id.
 # Don't think that would be of any issue though...
-"""默认 deviceID"""
 SESSION_STACK = dict()
 
 
@@ -70,26 +68,13 @@ class Session(requests.Session):
 
         - HTTP方面，`Session`的配置方法和 `requests.Session` 完全一致，如配置 Headers:
 
-        GetCurrentSession().headers['X-Real-IP'] = '1.1.1.1'
+        Session().headers['X-Real-IP'] = '1.1.1.1'
 
         - 该 Session 其他参数也可被修改:
 
-        GetCurrentSession().force_http = True # 优先 HTTP
+        Session().force_http = True # 优先 HTTP
 
-        - Session 对象本身可作为 Context Manager 使用:
-
-
-    ```python
-    # 利用全局 Session 完成该 API Call
-    LoginViaEmail(...)
-    session = CreateNewSession() # 建立新的 Session
-    with session: # 进入该 Session, 在 `with` 内的 API 将由该 Session 完成
-        LoginViaCellPhone(...)
-    # 离开 Session. 此后 API 将继续由全局 Session 管理
-    ```
-    注：Session 各*线程*独立，各线程利用 `with` 设置的 Session 不互相影响
-
-    获取其他具体信息请参考该文档注释
+        获取其他具体信息请参考该文档注释
     """
 
     HOST = "music.163.com"
@@ -106,13 +91,9 @@ class Session(requests.Session):
     """优先使用 HTTP 作 API 请求协议"""
 
     def __enter__(self) -> requests.Response:
-        SESSION_STACK.setdefault(current_thread(), list())
-        SESSION_STACK[current_thread()].append(self)
-        return super().__enter__()
-
-    def __exit__(self, *args) -> None:
-        SESSION_STACK[current_thread()].pop()
-        return super().__exit__(*args)
+        raise TypeError(
+            f"{self.__class__.__name__} does not support the context manager"
+        )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -266,21 +247,6 @@ class Session(requests.Session):
 class SessionManager:
     """PyNCM Session 单例储存对象"""
 
-    def __init__(self) -> None:
-        self.session = Session()
-
-    def get(self):
-        if SESSION_STACK.get(current_thread(), None):
-            return SESSION_STACK[current_thread()][-1]
-        return self.session
-
-    def set(self, session):
-        if SESSION_STACK.get(current_thread(), None):
-            raise Exception(
-                "Current Session is in `with` block, which cannot be reassigned."
-            )
-        self.session = session
-
     # region Session serialization
     @staticmethod
     def stringify_legacy(session: Session) -> str:
@@ -329,26 +295,6 @@ class SessionManager:
 sessionManager = SessionManager()
 
 
-def GetCurrentSession() -> Session:
-    """获取当前正在被 PyNCM 使用的 Session / 登录态"""
-    return sessionManager.get()
-
-
-def SetCurrentSession(session: Session):
-    """设置当前正在被 PyNCM 使用的 Session / 登录态"""
-    sessionManager.set(session)
-
-
-def SetNewSession():
-    """设置新的被 PyNCM 使用的 Session / 登录态"""
-    sessionManager.set(Session())
-
-
-def CreateNewSession() -> Session:
-    """创建新 Session 实例"""
-    return Session()
-
-
 def LoadSessionFromString(dump: str) -> Session:
     """从 `str` 加载 Session / 登录态"""
     session = SessionManager.parse(dump)
@@ -360,18 +306,19 @@ def DumpSessionAsString(session: Session) -> str:
     return SessionManager.stringify(session)
 
 
-def WriteLoginInfo(content: dict):
+def WriteLoginInfo(content: dict, session: Session):
     """写登录态入Session
 
     Args:
         content (dict): 解码后的登录态
+        session (Session)
 
     Raises:
         LoginFailedException: 登陆失败时发生
     """
-    sessionManager.session.login_info = {"tick": time(), "content": content}
-    if not sessionManager.session.login_info["content"]["code"] == 200:
-        sessionManager.session.login_info["success"] = False
-        raise Exception(sessionManager.session.login_info["content"])
-    sessionManager.session.login_info["success"] = True
-    sessionManager.session.csrf_token = sessionManager.session.cookies.get("__csrf")
+    session.login_info = {"tick": time(), "content": content}
+    if not session.login_info["content"]["code"] == 200:
+        session.login_info["success"] = False
+        raise Exception(session.login_info["content"])
+    session.login_info["success"] = True
+    session.csrf_token = session.cookies.get("__csrf")

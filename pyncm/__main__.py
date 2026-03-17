@@ -3,9 +3,8 @@
 
 from pyncm import (
     DumpSessionAsString,
-    GetCurrentSession,
     LoadSessionFromString,
-    SetCurrentSession,
+    Session,
     __version__,
 )
 from pyncm.utils.lrcparser import LrcParser
@@ -16,6 +15,7 @@ from pyncm.utils.helper import (
     UserHelper,
     FuzzyPathHelper,
     SubstituteWithFullwidth,
+    setSession
 )
 from pyncm.apis import artist, login, track, playlist, album, user
 from queue import Queue
@@ -48,6 +48,9 @@ for import_name in OPTIONALS:
 
 __desc__ = """PyNCM 网易云音乐下载工具 %s""" % __version__
 
+
+session = Session()
+setSession(session)
 
 class TaskPoolExecutorThread(Thread):
     @staticmethod
@@ -161,7 +164,7 @@ class TaskPoolExecutorThread(Thread):
 
     def download_by_url(self, url, dest, xfer=False):
         # Downloads generic content
-        response = GetCurrentSession().get(url, stream=True)
+        response = session.get(url, stream=True)
         length = int(response.headers.get("content-length"))
 
         with open(dest, "wb") as f:
@@ -194,7 +197,7 @@ class TaskPoolExecutorThread(Thread):
                     )
                     if task.routine.args.use_download_api:
                         logger.warning("使用下载 API，可能消耗 VIP 下载额度！")
-                    dAudio = apiCall(task.audio.id, level=task.audio.level)
+                    dAudio = apiCall(task.audio.id, level=task.audio.level, session=session)
                     assert "data" in dAudio, "其他错误： %s" % dAudio
                     dAudio = dAudio["data"]
                     if type(dAudio) == list:
@@ -241,7 +244,7 @@ class TaskPoolExecutorThread(Thread):
                     )
                     # Downloading & Parsing lyrics
                     lrc = LrcParser()
-                    dLyrics = track.GetTrackLyricsV1(task.lyrics.id)
+                    dLyrics = track.GetTrackLyricsV1(task.lyrics.id, session=session)
                     for k in set(dLyrics.keys()) & (
                         {"lrc", "tlyric", "romalrc"} - task.lyrics.lrc_blacklist
                     ):  # Filtering LRCs
@@ -381,7 +384,7 @@ class Playlist(Subroutine):
 
     def forIds(self, ids):
         dDetails = [
-            track.GetTrackDetail(ids[index : min(len(ids), index + 1000)]).get("songs")
+            track.GetTrackDetail(ids[index : min(len(ids), index + 1000)], session=session).get("songs")
             for index in range(0, len(ids), 1000)
         ]
         dDetails = [song for stripe in dDetails for song in stripe]
@@ -448,7 +451,7 @@ class Playlist(Subroutine):
     def __call__(self, ids):
         queued = []
         for _id in ids:
-            dList = playlist.GetPlaylistInfo(_id)
+            dList = playlist.GetPlaylistInfo(_id, session=session)
             logger.info(self.prefix + "：%s" % dict(dList)["playlist"]["name"])
             queuedTasks = self.forIds(
                 [tid.get("id") for tid in dict(dList)["playlist"]["trackIds"]]
@@ -463,7 +466,7 @@ class Album(Playlist):
     def __call__(self, ids):
         queued = []
         for _id in ids:
-            dList = album.GetAlbumInfo(_id)
+            dList = album.GetAlbumInfo(_id, session=session)
             logger.info(self.prefix + "：%s" % dict(dList)["album"]["name"])
             queuedTasks = self.forIds([tid["id"] for tid in dList["songs"]])
             queued += queuedTasks
@@ -483,7 +486,7 @@ class Artist(Playlist):
             # TODO: Fix GetArtistTracks
             # We iterate all Albums instead as this would provide a superset of what `GetArtistsTracks` gives us
             album_ids = [
-                album["id"] for album in artist.GetArtistAlbums(_id)["hotAlbums"]
+                album["id"] for album in artist.GetArtistAlbums(_id, session=session)["hotAlbums"]
             ]
             album_task = Album(self.args, self.put, prefix="艺术家专辑")
             album_task.forIds = self.forIds
@@ -507,7 +510,7 @@ class User(Playlist):
             )
             playlist_ids = [
                 pl["id"]
-                for pl in user.GetUserPlaylists(_id)["playlist"]
+                for pl in user.GetUserPlaylists(_id, session=session)["playlist"]
                 if self.args.user_bookmarks
                 or pl["creator"]["userId"] == UserHelper(_id).ID
             ]
@@ -753,6 +756,8 @@ def parse_args(quit_on_empty_args=True):
 
 
 def __main__(return_tasks=False):
+    global session
+
     args, tasks = parse_args()
     log_stream = sys.stdout
     # Getting tqdm & logger to work nicely together
@@ -788,35 +793,36 @@ def __main__(return_tasks=False):
     from pyncm.utils.constant import known_good_deviceIds
     from random import choice as rnd_choice
 
-    GetCurrentSession().deviceId = rnd_choice(known_good_deviceIds)
+    session.deviceId = rnd_choice(known_good_deviceIds)
     # Pick a random one that WILL work!
     if args.deviceId:
-        GetCurrentSession().deviceId = args.deviceId
+        session.deviceId = args.deviceId
     if args.load:
         logger.info("读取登录信息 : %s" % args.load)
-        SetCurrentSession(LoadSessionFromString(open(args.load).read()))
+        session = LoadSessionFromString(open(args.load).read())
+        setSession(session)
     if args.http:
-        GetCurrentSession().force_http = True
+        session.force_http = True
         logger.warning("优先使用 HTTP")
     if args.phone and args.pwd:
-        login.LoginViaCellphone(args.phone, args.pwd)
+        login.LoginViaCellphone(args.phone, args.pwd, session=session)
     if args.cookie:
-        login.LoginViaCookie(args.cookie)
-    if not GetCurrentSession().logged_in:
-        login.LoginViaAnonymousAccount()
+        login.LoginViaCookie(args.cookie, session=session)
+    if not session.logged_in:
+        login.LoginViaAnonymousAccount(session=session)
         logger.info(
             "以匿名身份登陆成功，deviceId=%s, UID: %s"
-            % (GetCurrentSession().deviceId, GetCurrentSession().uid)
+            % (session.deviceId, session.uid)
         )
     executor = TaskPoolExecutorThread(max_workers=args.max_workers)
-    if not GetCurrentSession().is_anonymous:
+    if not session.is_anonymous:
         logger.info(
             "账号 ：%s (VIP %s)"
-            % (GetCurrentSession().nickname, GetCurrentSession().vipType)
+            % (session.nickname, session.vipType)
         )
     if args.save:
         logger.info("保存登陆信息于 : %s" % args.save)
-        open(args.save, "w").write(DumpSessionAsString(GetCurrentSession()))
+        open(args.save, "w").write(DumpSessionAsString(session))
         return 0
     executor.daemon = True
     executor.start()

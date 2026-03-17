@@ -3,7 +3,6 @@ import sys, os
 
 IS_FIRSTTIME = sys.path[0] != "."
 
-
 def assert_dep(name):
     assert importlib.util.find_spec(name), f"需要安装 {name}"
 
@@ -14,30 +13,33 @@ def login():
 
     class 匿名登陆:
         @staticmethod
-        def login():
+        def login(session):
             from pyncm.apis.login import LoginViaAnonymousAccount
 
-            return LoginViaAnonymousAccount()
+            return LoginViaAnonymousAccount(session=session)
 
     methods = {"手机登录": 手机登录, "二维码登录": 二维码登录, "匿名登陆": 匿名登陆}
     assert methods[
         inquirer.prompt([inquirer.List("method", message="登陆方法", choices=methods)])[
             "method"
         ]
-    ].login(), "登录失败"
-    from pyncm import GetCurrentSession
+    ].login(session), "登录失败"
 
     print(
         "已登录",
-        GetCurrentSession().nickname,
+        session.nickname,
         "用户 ID：",
-        GetCurrentSession().uid,
+        session.uid,
     )
     return True
 
 
 assert_dep("pyncm")
 assert_dep("inquirer")
+
+from pyncm import Session
+session = Session()
+
 # Find pyncm from working directories first,
 if IS_FIRSTTIME:
     import inquirer

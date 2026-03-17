@@ -3,11 +3,11 @@ from pyncm.apis.login import (
     SetSendRegisterVerifcationCodeViaCellphone,
     GetRegisterVerifcationStatusViaCellphone,
 )
-from pyncm import GetCurrentSession, DumpSessionAsString
+from pyncm import DumpSessionAsString
 from pprint import pprint
 
 
-def login():
+def login(session):
     import inquirer
 
     query = inquirer.prompt(
@@ -18,25 +18,25 @@ def login():
     )
     phone, ctcode = query["phone"], query["ctcode"] or 86
     if inquirer.confirm("使用手机验证码登陆？"):
-        result = SetSendRegisterVerifcationCodeViaCellphone(phone, ctcode)
+        result = SetSendRegisterVerifcationCodeViaCellphone(phone, ctcode, session=session)
         if not result.get("code", 0) == 200:
             pprint(result)
         else:
             print("[-] 已发送验证码")
         while True:
             captcha = inquirer.text("输入验证码")
-            verified = GetRegisterVerifcationStatusViaCellphone(phone, captcha, ctcode)
+            verified = GetRegisterVerifcationStatusViaCellphone(phone, captcha, ctcode, session=session)
             pprint(verified)
             if verified.get("code", 0) == 200:
                 print("[-] 验证成功")
                 break
-        result = LoginViaCellphone(phone, captcha=captcha, ctcode=ctcode)
+        result = LoginViaCellphone(phone, captcha=captcha, ctcode=ctcode, session=session)
         pprint(result)
     else:
         password = inquirer.password("输入密码")
-        result = LoginViaCellphone(phone, password=password, ctcode=ctcode)
+        result = LoginViaCellphone(phone, password=password, ctcode=ctcode, session=session)
         pprint(result)
-    print("[!] 登录态 Session:", DumpSessionAsString(GetCurrentSession()))
+    print("[!] 登录态 Session:", DumpSessionAsString(session))
     print(
         '[-] 此后可通过 SetCurrentSession(LoadSessionFromString("PYNCMe...")) 恢复当前登录态'
     )
@@ -45,4 +45,5 @@ def login():
 
 if __name__ == "__main__":
     print("[-] 登录测试")
-    assert login(), "登陆失败"
+    from pyncm import Session
+    assert login(Session()), "登陆失败"

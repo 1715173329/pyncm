@@ -1,5 +1,5 @@
 import hashlib, os
-from __init__ import login
+from __init__ import login, session
 
 
 def md5sum(file):
@@ -11,7 +11,6 @@ def md5sum(file):
 
 
 def upload_one(path):
-    from pyncm import GetCurrentSession
     from pyncm.apis.cloud import (
         GetCheckCloudUpload,
         GetNosToken,
@@ -26,16 +25,17 @@ def upload_one(path):
     fsize = os.stat(path).st_size
     md5 = md5sum(path).hexdigest()
     print("MD5", md5)
-    cresult = GetCheckCloudUpload(md5)
+    cresult = GetCheckCloudUpload(md5, session)
     songId = cresult["songId"]
     """网盘资源发布 4 步走：
     1.拿到上传令牌 - 需要文件名，MD5，文件大小"""
-    token = GetNosToken(fname, md5, fsize, fext)["result"]
+    token = GetNosToken(fname, md5, fsize, fext, session=session)["result"]
     if cresult["needUpload"]:
         print(f"开始上传 {fname} ( {fsize} B )")
         """2. 若文件未曾上传完毕，则完成其上传"""
         upload_result = SetUploadObject(
-            open(path, "rb"), md5, fsize, token["objectKey"], token["token"]
+            open(path, "rb"), md5, fsize, token["objectKey"], token["token"],
+            session=session
         )
         print("响应", upload_result)
     print(
@@ -50,14 +50,15 @@ def upload_one(path):
         md5=md5,
         filename=fname,
         song=fname,
-        artist=GetCurrentSession().nickname,
+        artist=session.nickname,
         album="PyNCM",
         bitrate=1000,
+        session=session,
     )
     """3. 提交资源"""
     print("提交响应", submit_result)
     """4. 发布资源"""
-    publish_result = SetPublishCloudResource(submit_result["songId"])
+    publish_result = SetPublishCloudResource(submit_result["songId"], session=session)
     print("发布结果", publish_result)
 
 

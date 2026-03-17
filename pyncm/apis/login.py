@@ -5,7 +5,7 @@ from base64 import b64encode
 
 from .exception import LoginFailedException
 
-from .. import WriteLoginInfo, GetCurrentSession
+from .. import WriteLoginInfo, Session
 from . import EapiCryptoRequest, WeapiCryptoRequest
 from ..utils import GenerateChainId
 from ..utils.crypto import HashHexDigest
@@ -90,7 +90,7 @@ def GetCurrentLoginStatus():
     return "/weapi/w/nuser/account/get", {}
 
 
-def LoginViaCookie(MUSIC_U="", session=None, **kwargs):
+def LoginViaCookie(MUSIC_U="", *, session: Session, **kwargs) -> dict:
     """通过 Cookie 登陆
 
     Args:
@@ -99,10 +99,9 @@ def LoginViaCookie(MUSIC_U="", session=None, **kwargs):
     Returns:
         dict
     """
-    session = session or GetCurrentSession()
     session.cookies.update({"MUSIC_U": MUSIC_U, **kwargs})
     login_status = GetCurrentLoginStatus(session=session)
-    WriteLoginInfo(login_status)
+    WriteLoginInfo(login_status, session)
     return {"code": 200, "result": session.login_info}
 
 
@@ -113,7 +112,8 @@ def LoginViaCellphone(
     captcha="",
     ctcode=86,
     remeberLogin=True,
-    session=None,
+    *, 
+    session: Session,
 ) -> dict:
     """PC 端 - 手机号登陆
 
@@ -136,7 +136,6 @@ def LoginViaCellphone(
         dict
     """
     path = "/eapi/w/login/cellphone"
-    session = session or GetCurrentSession()
     if password:
         passwordHash = HashHexDigest(password)
 
@@ -161,12 +160,12 @@ def LoginViaCellphone(
         )
     )(session=session)
 
-    WriteLoginInfo(login_status)
+    WriteLoginInfo(login_status, session)
     return {"code": 200, "result": session.login_info}
 
 
 def LoginViaEmail(
-    email="", password="", passwordHash="", remeberLogin=True, session=None
+    email="", password="", passwordHash="", remeberLogin=True, *, session: Session
 ) -> dict:
     """网页端 - 邮箱登陆
 
@@ -186,7 +185,6 @@ def LoginViaEmail(
         dict
     """
     path = "/eapi/login"
-    session = session or GetCurrentSession()
     if password:
         passwordHash = HashHexDigest(password)
 
@@ -207,11 +205,11 @@ def LoginViaEmail(
         )
     )(session=session)
 
-    WriteLoginInfo(login_status)
+    WriteLoginInfo(login_status, session)
     return {"code": 200, "result": session.login_info}
 
 
-def GetLoginQRCodeUrl(unikey: str, session=None) -> str:
+def GetLoginQRCodeUrl(unikey: str, *, session: Session) -> str:
     """获取登录二维码的链接
 
     此链接可直接用于生成二维码
@@ -222,7 +220,6 @@ def GetLoginQRCodeUrl(unikey: str, session=None) -> str:
     Returns:
         str: 拼接的二维码链接
     """
-    session = session or GetCurrentSession()
     # 从session中获取sDeviceId字段
     # 生成chainId, chainId是网易云音乐新版本新增的参数
     # 如果不加chainId参数，将会因登录风控问题而登录失败
@@ -293,7 +290,7 @@ def SetRegisterAccountViaCellphone(
     }
 
 
-def LoginViaAnonymousAccount(deviceId=None, session=None):
+def LoginViaAnonymousAccount(deviceId=None, *, session: Session) -> dict:
     """PC 端 - 游客登陆
 
     Args:
@@ -305,7 +302,6 @@ def LoginViaAnonymousAccount(deviceId=None, session=None):
     Returns:
         dict
     """
-    session = session or GetCurrentSession()
     if not deviceId:
         deviceId = session.deviceId
     login_status = WeapiCryptoRequest(
@@ -325,6 +321,7 @@ def LoginViaAnonymousAccount(deviceId=None, session=None):
             "profile": {"nickname": "", **login_status},
             "account": {"id": login_status["userId"], **login_status},
         },
+        session
     )
     return session.login_info
 
